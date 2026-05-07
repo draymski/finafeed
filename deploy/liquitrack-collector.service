@@ -1,0 +1,39 @@
+[Unit]
+Description=LiquiTrack Binance Data Collector
+Documentation=https://github.com/your-repo/LiquiTrack
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=liquitrack
+Group=liquitrack
+WorkingDirectory=/opt/liquitrack/collector
+ExecStart=/opt/liquitrack/collector/.venv/bin/python -m collector.main
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/liquitrack/collector/data /opt/liquitrack/collector/logs
+PrivateTmp=true
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=50%
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/liquitrack
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=liquitrack-collector
+
+[Install]
+WantedBy=multi-user.target

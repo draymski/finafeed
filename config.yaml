@@ -1,0 +1,50 @@
+symbols:
+  - BTCUSDT
+  - ETHUSDT
+
+database:
+  path: ./data/liquitrack.db
+  wal_mode: true
+  max_size_mb: 800 # 超过此大小自动轮转到新文件
+
+collectors:
+  liquidation:
+    enabled: true
+    buffer_ms: 100 # 批量写入缓冲时间
+
+  open_interest:
+    enabled: true
+    interval_sec: 5
+    dedup: true # 值不变时跳过写入
+
+  long_short_ratio:
+    enabled: true
+    period: "5m"
+    limit: 500
+    interval_min: 2500
+
+reconnect:
+  initial_delay_sec: 1
+  max_delay_sec: 30
+  backoff_factor: 2
+
+metrics:
+  enabled: true
+  port: 17895 # Prometheus HTTP 端口
+
+alert:
+  enabled: true
+  telegram:
+    bot_token: "8502393438:AAH-MrMiya87XPVBPVpnqPqlZ5pAjy_-EKQ"
+    chat_id: "8259011171" # 填入你的 chat_id (用 /start 给 bot 发消息后获取)
+  alert_on:
+    - ws_disconnect_5min
+    - rest_fail_3_consecutive
+    - db_write_error
+
+logging:
+  level: INFO
+  format: json
+  dir: ./logs
+  rotation_mb: 50
+  retention_days: 30
