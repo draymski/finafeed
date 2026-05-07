@@ -3,7 +3,7 @@ symbols:
   - ETHUSDT
 
 database:
-  path: ./data/liquitrack.db
+  path: ./data/finafeed.db
   wal_mode: true
   max_size_mb: 800 # 超过此大小自动轮转到新文件
 
@@ -35,8 +35,8 @@ metrics:
 alert:
   enabled: true
   telegram:
-    bot_token: "8502393438:AAH-MrMiya87XPVBPVpnqPqlZ5pAjy_-EKQ"
-    chat_id: "8259011171" # 填入你的 chat_id (用 /start 给 bot 发消息后获取)
+    bot_token: ""
+    chat_id: "" # 填入你的 chat_id (用 /start 给 bot 发消息后获取)
   alert_on:
     - ws_disconnect_5min
     - rest_fail_3_consecutive

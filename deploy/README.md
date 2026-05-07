@@ -1,4 +1,4 @@
-# LiquiTrack Collector — VPS 部署指南
+# finafeed Collector — VPS 部署指南
 
 ## 环境要求
 
@@ -8,19 +8,19 @@
 
 ## 快速部署
 
-### 1. 创建用户和目录
+### 1. 创建目录
 
 ```bash
-sudo useradd -r -s /bin/false liquitrack
-sudo mkdir -p /opt/liquitrack
-sudo chown liquitrack:liquitrack /opt/liquitrack
+# 直接使用当前 ubuntu 用户，无需创建专用用户
+sudo mkdir -p /opt/finafeed
+sudo chown ubuntu:ubuntu /opt/finafeed
 ```
 
 ### 2. 上传代码
 
 ```bash
-# 从本地上传 collector 目录到 VPS
-scp -r ./collector/ user@your-vps:/opt/liquitrack/
+# 从本地上传 finafeed 目录到 VPS
+scp -r ./finafeed/ user@your-vps:/opt/finafeed/
 ```
 
 ### 3. 安装 uv 并同步依赖
@@ -30,49 +30,43 @@ scp -r ./collector/ user@your-vps:/opt/liquitrack/
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # 同步依赖 (自动创建 .venv)
-cd /opt/liquitrack/collector
+cd /opt/finafeed/finafeed
 uv sync
 ```
 
 ### 4. 配置
 
-编辑 `/opt/liquitrack/collector/config.yaml`：
-
-```bash
-nano /opt/liquitrack/collector/config.yaml
-```
+编辑 `/opt/finafeed/collector/config.yaml`
 
 关键配置：
-- `symbols`: 要监控的交易对
-- `alert.telegram.bot_token`: Telegram Bot Token
-- `alert.telegram.chat_id`: 你的 Telegram Chat ID
 
-获取 Chat ID：给你的 bot 发送 `/start`，然后访问：
-```
-https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
-```
+- `symbols`: 要监控的交易对
+- 配置telegram bot，用写入env的方法: `FINAFEED_TELEGRAM_TOKEN`, `FINAFEED_TELEGRAM_CHAT`; 或者在config.yaml中配置
+
+获取 Chat ID：给你的 bot 发送 `/start`，然后访问：`https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates`
 
 ### 5. 验证配置 (Dry Run)
 
 ```bash
-cd /opt/liquitrack/collector
-PYTHONPATH=/opt/liquitrack uv run python -m collector.main --dry-run
+cd /opt/finafeed/finafeed
+PYTHONPATH=/opt/finafeed uv run python -m finafeed.main --dry-run
 ```
+
+⚠️ 此时也可直接启用: `uv run python -m finafeed.main`
 
 ### 6. 安装 systemd 服务
 
 ```bash
-sudo cp /opt/liquitrack/collector/deploy/liquitrack-collector.service /etc/systemd/system/
+sudo cp /opt/finafeed/finafeed/deploy/finafeed.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable liquitrack-collector
-sudo systemctl start liquitrack-collector
+sudo systemctl enable finafeed
+sudo systemctl start finafeed
 ```
 
 ### 7. 创建数据和日志目录（权限）
 
 ```bash
-sudo mkdir -p /opt/liquitrack/collector/data /opt/liquitrack/collector/logs
-sudo chown -R liquitrack:liquitrack /opt/liquitrack/
+mkdir -p /opt/finafeed/data /opt/finafeed/logs
 ```
 
 ## 日常运维
@@ -80,35 +74,35 @@ sudo chown -R liquitrack:liquitrack /opt/liquitrack/
 ### 查看状态
 
 ```bash
-sudo systemctl status liquitrack-collector
+sudo systemctl status finafeed
 ```
 
 ### 查看日志
 
 ```bash
 # systemd journal 日志
-sudo journalctl -u liquitrack-collector -f
+sudo journalctl -u finafeed -f
 
 # 结构化 JSON 日志 (可用 jq 过滤)
-tail -f /opt/liquitrack/collector/logs/collector.log | jq .
+tail -f /opt/finafeed/finafeed/logs/finafeed.log | jq .
 
 # 只看错误
-tail -f /opt/liquitrack/collector/logs/collector.log | jq 'select(.level == "error")'
+tail -f /opt/finafeed/finafeed/logs/finafeed.log | jq 'select(.level == "error")'
 
 # 只看大户多空比采集日志
-tail -f /opt/liquitrack/collector/logs/collector.log | jq 'select(.event == "LONG_SHORT_RATIO")'
+tail -f /opt/finafeed/finafeed/logs/finafeed.log | jq 'select(.event == "LONG_SHORT_RATIO")'
 ```
 
 ### 重启
 
 ```bash
-sudo systemctl restart liquitrack-collector
+sudo systemctl restart finafeed
 ```
 
 ### 停止
 
 ```bash
-sudo systemctl stop liquitrack-collector
+sudo systemctl stop finafeed
 ```
 
 ### 查看 Prometheus 指标
@@ -122,13 +116,13 @@ curl http://localhost:17895/metrics
 ### 查看数据库大小
 
 ```bash
-ls -lh /opt/liquitrack/collector/data/
+ls -lh /opt/finafeed/finafeed/data/
 ```
 
 ### 查询数据
 
 ```bash
-sqlite3 /opt/liquitrack/collector/data/liquitrack.db
+sqlite3 /opt/finafeed/finafeed/data/finafeed.db
 
 # 爆仓数量
 SELECT COUNT(*) FROM liquidations;
@@ -147,33 +141,36 @@ SELECT COUNT(*) FROM long_short_ratio;
 
 ```bash
 # 使用 SQLite 的在线备份 (不影响写入)
-sqlite3 /opt/liquitrack/collector/data/liquitrack.db ".backup /tmp/liquitrack_backup.db"
+sqlite3 /opt/finafeed/finafeed/data/finafeed.db ".backup /tmp/finafeed_backup.db"
 
 # 或者 rsync 到本地
-rsync -avz user@your-vps:/opt/liquitrack/collector/data/ ./backup/
+rsync -avz user@your-vps:/opt/finafeed/finafeed/data/ ./backup/
 ```
 
 ## 环境变量覆盖
 
 以下环境变量可覆盖 config.yaml 中的值：
 
-| 变量 | 说明 |
-|------|------|
-| `LIQUITRACK_SYMBOLS` | 逗号分隔的 symbol 列表 |
-| `LIQUITRACK_DB_PATH` | 数据库文件路径 |
-| `LIQUITRACK_LOG_LEVEL` | 日志级别 (DEBUG/INFO/WARNING/ERROR) |
-| `LIQUITRACK_METRICS_PORT` | Prometheus 端口 |
-| `LIQUITRACK_TELEGRAM_TOKEN` | Telegram Bot Token |
-| `LIQUITRACK_TELEGRAM_CHAT` | Telegram Chat ID |
+| 变量                      | 说明                                |
+| ------------------------- | ----------------------------------- |
+| `FINAFEED_SYMBOLS`        | 逗号分隔的 symbol 列表              |
+| `FINAFEED_DB_PATH`        | 数据库文件路径                      |
+| `FINAFEED_LOG_LEVEL`      | 日志级别 (DEBUG/INFO/WARNING/ERROR) |
+| `FINAFEED_METRICS_PORT`   | Prometheus 端口                     |
+| `FINAFEED_TELEGRAM_TOKEN` | Telegram Bot Token                  |
+| `FINAFEED_TELEGRAM_CHAT`  | Telegram Chat ID                    |
 
 在 systemd 中使用：
+
 ```bash
-sudo systemctl edit liquitrack-collector
+sudo systemctl edit finafeed
 ```
+
 添加：
+
 ```ini
 [Service]
-Environment=LIQUITRACK_SYMBOLS=BTCUSDT,ETHUSDT,SOLUSDT
+Environment=FINAFEED_SYMBOLS=BTCUSDT,ETHUSDT,SOLUSDT
 ```
 
 ## 故障排查
@@ -192,8 +189,9 @@ python3 -c "import asyncio, aiohttp; asyncio.run((lambda: print('ok'))())"
 ### 数据库锁定
 
 SQLite WAL 模式下极少出现，如果遇到：
+
 ```bash
-sqlite3 /opt/liquitrack/collector/data/liquitrack.db "PRAGMA wal_checkpoint(TRUNCATE);"
+sqlite3 /opt/finafeed/data/finafeed.db "PRAGMA wal_checkpoint(TRUNCATE);"
 ```
 
 ### 内存过高

@@ -1,15 +1,15 @@
 [Unit]
-Description=LiquiTrack Binance Data Collector
-Documentation=https://github.com/your-repo/LiquiTrack
+Description=Finafeed Binance Data Collector
+Documentation=https://github.com/draymski/finafeed
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=liquitrack
-Group=liquitrack
-WorkingDirectory=/opt/liquitrack/collector
-ExecStart=/opt/liquitrack/collector/.venv/bin/python -m collector.main
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/finafeed
+ExecStart=/opt/finafeed/.venv/bin/python -m finafeed.main
 Restart=always
 RestartSec=5
 StartLimitIntervalSec=60
@@ -18,8 +18,7 @@ StartLimitBurst=5
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/opt/liquitrack/collector/data /opt/liquitrack/collector/logs
+ReadWritePaths=/opt/finafeed/data /opt/finafeed/logs
 PrivateTmp=true
 
 # Resource limits
@@ -28,12 +27,12 @@ CPUQuota=50%
 
 # Environment
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/opt/liquitrack
+Environment=PYTHONPATH=/opt/finafeed
 
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=liquitrack-collector
+SyslogIdentifier=finafeed
 
 [Install]
 WantedBy=multi-user.target

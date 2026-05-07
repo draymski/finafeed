@@ -1,6 +1,6 @@
-# LiquiTrack 7×24 数据采集守护进程
+# finafeed 7×24 数据采集守护进程
 
-将现有 LiquiTrack 前端看盘系统的**数据采集**能力抽离为独立的守护进程，部署在东京 VPS 上实现 7×24 无人值守运行。
+将现有 finafeed 前端看盘系统的**数据采集**能力抽离为独立的守护进程，部署在东京 VPS 上实现 7×24 无人值守运行。
 
 ---
 
@@ -9,6 +9,7 @@
 > [!IMPORTANT]
 > **技术栈选择：Python asyncio**
 > 考虑到你的需求（低延迟流处理 + REST 定时轮询 + 7×24 守护进程 + VPS 部署），推荐使用 **Python 3.11+ asyncio** 而非 Node.js，原因：
+>
 > - `asyncio` 原生支持高并发 WebSocket + HTTP 调度，单线程无阻塞
 > - `aiosqlite` 提供异步 SQLite 访问，WAL 模式下写入性能优秀
 > - `systemd` 原生进程管理，比 pm2 更适合 Linux daemon
@@ -26,6 +27,7 @@
 ## Open Questions
 
 > [!IMPORTANT]
+>
 > 1. **VPS 上的 Python 版本？** 需要 3.11+，你的东京 VPS 是什么系统？(Ubuntu/Debian/CentOS?)
 > 2. **默认监控哪些 symbol？** 配置文件里需要一个默认列表，比如 `["BTCUSDT", "ETHUSDT"]`？
 > 3. **数据保留策略？** SQLite 文件无限增长还是定期清理？比如保留最近 90 天？
@@ -38,16 +40,16 @@
 
 ```mermaid
 graph TB
-    subgraph "LiquiTrack Collector (Python asyncio)"
+    subgraph "finafeed Collector (Python asyncio)"
         M["main.py<br/>入口 & 生命周期管理"]
         CFG["config.yaml<br/>配置文件"]
-        
+
         subgraph "Collectors"
             WS["ws_liquidation.py<br/>WebSocket 爆仓流"]
             OI["rest_open_interest.py<br/>REST 未平仓量"]
             LS["rest_long_short.py<br/>REST 大户多空比"]
         end
-        
+
         subgraph "Infrastructure"
             DB["storage.py<br/>SQLite WAL 异步写入"]
             LOG["logger.py<br/>结构化日志 structlog"]
@@ -63,11 +65,11 @@ graph TB
     WS --> DB
     OI --> DB
     LS --> DB
-    
+
     WS --> MET
     OI --> MET
     LS --> MET
-    
+
     MET --> ALT
     LOG --> ALT
 
@@ -81,17 +83,17 @@ graph TB
 
 ## 技术栈
 
-| 层级 | 技术 | 理由 |
-|------|------|------|
-| 运行时 | Python 3.11+ asyncio | 原生异步、GIL 友好的 I/O 密集场景 |
-| WebSocket | `aiohttp` | 成熟的异步 WS 客户端，支持自动重连 |
-| HTTP 客户端 | `aiohttp.ClientSession` | 连接池复用、非阻塞 |
-| 存储 | `aiosqlite` + SQLite WAL | 零运维、省内存、高写入吞吐 |
-| 日志 | `structlog` + JSON | 结构化日志，便于 grep/jq 分析 |
-| 指标 | `prometheus_client` | 标准可观测方案，可选暴露 HTTP |
-| 告警 | `aiohttp` webhook | 异常时推送到 Discord/Telegram |
-| 进程管理 | `systemd` | Linux 原生守护进程，自动重启 |
-| 配置 | `pyyaml` | YAML 配置文件 |
+| 层级        | 技术                     | 理由                               |
+| ----------- | ------------------------ | ---------------------------------- |
+| 运行时      | Python 3.11+ asyncio     | 原生异步、GIL 友好的 I/O 密集场景  |
+| WebSocket   | `aiohttp`                | 成熟的异步 WS 客户端，支持自动重连 |
+| HTTP 客户端 | `aiohttp.ClientSession`  | 连接池复用、非阻塞                 |
+| 存储        | `aiosqlite` + SQLite WAL | 零运维、省内存、高写入吞吐         |
+| 日志        | `structlog` + JSON       | 结构化日志，便于 grep/jq 分析      |
+| 指标        | `prometheus_client`      | 标准可观测方案，可选暴露 HTTP      |
+| 告警        | `aiohttp` webhook        | 异常时推送到 Discord/Telegram      |
+| 进程管理    | `systemd`                | Linux 原生守护进程，自动重启       |
+| 配置        | `pyyaml`                 | YAML 配置文件                      |
 
 ---
 
@@ -99,34 +101,34 @@ graph TB
 
 ### 1. 爆仓数据 (WebSocket Stream)
 
-| 项目 | 详情 |
-|------|------|
-| 端点 | `wss://fstream.binance.com/market/stream?streams=<symbol>@forceOrder` |
-| 频率 | 实时推送，1000ms 内最多 1 条快照 |
-| 数据模型 | `symbol, side, order_type, time_in_force, qty, price, avg_price, status, last_qty, filled_qty, trade_time, event_time` |
-| 存储策略 | 每条消息立即写入 (批量 buffer 100ms) |
-| 重连策略 | 指数退避 1s→2s→4s→8s→30s (cap)，永不放弃 |
-| 多 symbol | 每个 symbol 一个独立 WS 连接 (分片隔离) |
+| 项目      | 详情                                                                                                                   |
+| --------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 端点      | `wss://fstream.binance.com/market/stream?streams=<symbol>@forceOrder`                                                  |
+| 频率      | 实时推送，1000ms 内最多 1 条快照                                                                                       |
+| 数据模型  | `symbol, side, order_type, time_in_force, qty, price, avg_price, status, last_qty, filled_qty, trade_time, event_time` |
+| 存储策略  | 每条消息立即写入 (批量 buffer 100ms)                                                                                   |
+| 重连策略  | 指数退避 1s→2s→4s→8s→30s (cap)，永不放弃                                                                               |
+| 多 symbol | 每个 symbol 一个独立 WS 连接 (分片隔离)                                                                                |
 
 ### 2. 未平仓合约数 (REST Polling)
 
-| 项目 | 详情 |
-|------|------|
-| 端点 | `GET https://fapi.binance.com/fapi/v1/openInterest?symbol=<SYMBOL>` |
-| 频率 | 每 5 秒轮询 |
-| 权重 | 1/请求 |
-| 去重 | 与上次 `openInterest` 值比较，相同则跳过写入 |
-| 数据模型 | `symbol, open_interest, time, collected_at` |
+| 项目     | 详情                                                                |
+| -------- | ------------------------------------------------------------------- |
+| 端点     | `GET https://fapi.binance.com/fapi/v1/openInterest?symbol=<SYMBOL>` |
+| 频率     | 每 5 秒轮询                                                         |
+| 权重     | 1/请求                                                              |
+| 去重     | 与上次 `openInterest` 值比较，相同则跳过写入                        |
+| 数据模型 | `symbol, open_interest, time, collected_at`                         |
 
 ### 3. 大户持仓量多空比 (REST Polling)
 
-| 项目 | 详情 |
-|------|------|
-| 端点 | `GET https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=<SYMBOL>&period=5m&limit=500` |
-| 频率 | 每 2500 分钟 (≈41.67 小时) |
-| 权重 | 0 (不计入限频) |
-| 数据模型 | `symbol, long_short_ratio, long_account, short_account, timestamp` |
-| 日志 | 每次采集打印完整日志 (采集时间、返回条数、首末时间戳) |
+| 项目     | 详情                                                                                                      |
+| -------- | --------------------------------------------------------------------------------------------------------- |
+| 端点     | `GET https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=<SYMBOL>&period=5m&limit=500` |
+| 频率     | 每 2500 分钟 (≈41.67 小时)                                                                                |
+| 权重     | 0 (不计入限频)                                                                                            |
+| 数据模型 | `symbol, long_short_ratio, long_account, short_account, timestamp`                                        |
+| 日志     | 每次采集打印完整日志 (采集时间、返回条数、首末时间戳)                                                     |
 
 ---
 
@@ -135,7 +137,7 @@ graph TB
 ### 项目结构
 
 ```
-LiquiTrack/
+finafeed/
 ├── collector/                    # 新增：数据采集独立模块
 │   ├── __init__.py
 │   ├── main.py                   # 入口：生命周期、信号处理、任务编排
@@ -154,7 +156,7 @@ LiquiTrack/
 │   │   └── alerter.py            # Webhook 告警
 │   ├── requirements.txt          # Python 依赖
 │   └── deploy/
-│       ├── liquitrack-collector.service  # systemd 单元文件
+│       ├── finafeed-collector.service  # systemd 单元文件
 │       └── README.md                     # 部署文档
 ```
 
@@ -163,6 +165,7 @@ LiquiTrack/
 ### 核心组件
 
 #### [NEW] collector/main.py
+
 - 入口点，`asyncio.run()` 启动
 - 加载配置，初始化 DB/日志/指标
 - 为每个 symbol 创建 3 个采集任务 (WS + 2 REST)
@@ -171,24 +174,25 @@ LiquiTrack/
 - 全局异常兜底 + 告警
 
 #### [NEW] collector/config.yaml
+
 ```yaml
 symbols:
   - BTCUSDT
   - ETHUSDT
 
 database:
-  path: ./data/liquitrack.db
+  path: ./data/finafeed.db
   wal_mode: true
 
 collectors:
   liquidation:
     enabled: true
-    buffer_ms: 100          # 批量写入缓冲
+    buffer_ms: 100 # 批量写入缓冲
 
   open_interest:
     enabled: true
     interval_sec: 5
-    dedup: true             # 值不变时跳过写入
+    dedup: true # 值不变时跳过写入
 
   long_short_ratio:
     enabled: true
@@ -203,11 +207,11 @@ reconnect:
 
 metrics:
   enabled: true
-  port: 9090               # Prometheus HTTP 端口
+  port: 9090 # Prometheus HTTP 端口
 
 alert:
   enabled: false
-  webhook_url: ""           # Discord/Telegram webhook
+  webhook_url: "" # Discord/Telegram webhook
   alert_on:
     - ws_disconnect_5min
     - rest_fail_3_consecutive
@@ -218,14 +222,16 @@ logging:
   format: json
   file: ./logs/collector.log
   rotation: "50 MB"
-  retention: 30             # 天
+  retention: 30 # 天
 ```
 
 #### [NEW] collector/config.py
+
 - 使用 `pyyaml` + `dataclass` 加载并校验配置
-- 支持环境变量覆盖 (如 `LIQUITRACK_SYMBOLS=BTCUSDT,ETHUSDT`)
+- 支持环境变量覆盖 (如 `finafeed_SYMBOLS=BTCUSDT,ETHUSDT`)
 
 #### [NEW] collector/storage.py
+
 - `aiosqlite` 异步连接管理
 - 启动时 `PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;`
 - 三张表：`liquidations`, `open_interest`, `long_short_ratio`
@@ -269,6 +275,7 @@ CREATE INDEX IF NOT EXISTS idx_lsr_symbol_time ON long_short_ratio(symbol, data_
 ```
 
 #### [NEW] collector/collectors/ws_liquidation.py
+
 - 每个 symbol 独立的 `async` 协程
 - 使用 `aiohttp.ClientSession.ws_connect()` 连接
 - 收到消息后解析 forceOrder → 写入 buffer
@@ -278,6 +285,7 @@ CREATE INDEX IF NOT EXISTS idx_lsr_symbol_time ON long_short_ratio(symbol, data_
 - 心跳检测：若 >5min 无消息 → 告警（某些 symbol 爆仓本身就很稀疏，但 WS 应有 pong）
 
 #### [NEW] collector/collectors/rest_open_interest.py
+
 - `asyncio.sleep(5)` 循环
 - 每次请求 `/fapi/v1/openInterest?symbol=<SYMBOL>`
 - 与内存中上次值比较，不同才写入
@@ -285,24 +293,27 @@ CREATE INDEX IF NOT EXISTS idx_lsr_symbol_time ON long_short_ratio(symbol, data_
 - Prometheus 计数器: `oi_polls_total`, `oi_writes_total`, `oi_skips_total`
 
 #### [NEW] collector/collectors/rest_long_short.py
+
 - `asyncio.sleep(2500 * 60)` 循环（2500 分钟）
 - 请求 `/futures/data/topLongShortPositionRatio?symbol=<SYMBOL>&period=5m&limit=500`
 - 每次采集打印详细日志：
   ```
-  [2026-05-07 08:30:00] LONG_SHORT_RATIO symbol=BTCUSDT rows=500 
-  first_ts=2026-05-05T12:00:00 last_ts=2026-05-07T08:25:00 
+  [2026-05-07 08:30:00] LONG_SHORT_RATIO symbol=BTCUSDT rows=500
+  first_ts=2026-05-05T12:00:00 last_ts=2026-05-07T08:25:00
   latest_ratio=1.4342 elapsed_ms=234
   ```
 - 批量写入 500 条记录（使用 `INSERT OR IGNORE` 按 timestamp 去重）
 - Prometheus: `lsr_polls_total`, `lsr_rows_inserted`
 
 #### [NEW] collector/infra/logger.py
+
 - `structlog` 配置，JSON 格式输出
 - 文件日志 + 控制台日志
 - 日志轮转 (50MB per file, 保留 30 天)
 - 每条日志包含 `symbol`, `collector`, `timestamp` 上下文
 
 #### [NEW] collector/infra/metrics.py
+
 - `prometheus_client` 定义所有计数器和直方图
 - 可选暴露 HTTP `/metrics` 端口
 - 关键指标：
@@ -313,12 +324,14 @@ CREATE INDEX IF NOT EXISTS idx_lsr_symbol_time ON long_short_ratio(symbol, data_
   - `collector_last_activity_timestamp{type, symbol}` — 最后活动时间
 
 #### [NEW] collector/infra/alerter.py
+
 - 异步 Webhook 推送
 - 告警条件：WS 断连超 5 分钟、REST 连续 3 次失败、DB 写入错误
 - 告警去重：同一条件 10 分钟内不重复告警
 - 恢复通知：故障恢复后发送恢复消息
 
 #### [NEW] collector/requirements.txt
+
 ```
 aiohttp>=3.9.0
 aiosqlite>=0.19.0
@@ -327,17 +340,18 @@ prometheus-client>=0.20.0
 pyyaml>=6.0
 ```
 
-#### [NEW] collector/deploy/liquitrack-collector.service
+#### [NEW] collector/deploy/finafeed-collector.service
+
 ```ini
 [Unit]
-Description=LiquiTrack Data Collector
+Description=finafeed Data Collector
 After=network.target
 
 [Service]
 Type=simple
-User=liquitrack
-WorkingDirectory=/opt/liquitrack/collector
-ExecStart=/opt/liquitrack/venv/bin/python main.py
+User=finafeed
+WorkingDirectory=/opt/finafeed/collector
+ExecStart=/opt/finafeed/venv/bin/python main.py
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -348,6 +362,7 @@ WantedBy=multi-user.target
 ```
 
 #### [NEW] collector/deploy/README.md
+
 - VPS 部署步骤
 - systemd 启停命令
 - 日志查看
@@ -359,22 +374,25 @@ WantedBy=multi-user.target
 ## 关键设计决策
 
 ### 1. 多 Symbol 并发模型
+
 ```python
 async def main():
     config = load_config()
     db = await init_database(config)
-    
+
     tasks = []
     for symbol in config.symbols:
         tasks.append(collect_liquidations(symbol, db))
         tasks.append(collect_open_interest(symbol, db))
         tasks.append(collect_long_short_ratio(symbol, db))
-    
+
     await asyncio.gather(*tasks, return_exceptions=True)
 ```
+
 每个 symbol × 每种数据源 = 1 个独立协程，互不干扰。
 
 ### 2. WebSocket 重连策略
+
 ```
 断开 → 等待 1s → 重连 → 失败 → 等待 2s → 重连 → 失败 → 等待 4s → ... → cap at 30s
 重连成功 → 重置延迟到 1s
@@ -382,6 +400,7 @@ async def main():
 ```
 
 ### 3. Open Interest 去重
+
 ```python
 last_oi = {}  # symbol → last_value
 
@@ -395,6 +414,7 @@ async def poll_oi(symbol):
 ```
 
 ### 4. 优雅关闭
+
 ```python
 async def shutdown(signal):
     log.info("Shutting down", signal=signal)
@@ -410,16 +430,19 @@ async def shutdown(signal):
 ## Verification Plan
 
 ### Automated Tests
+
 1. **启动验证**: `python main.py --dry-run` 检查配置加载、DB 建表
 2. **连接验证**: 启动后 10s 内检查日志确认 WS 已连接
 3. **数据验证**: 运行 5 分钟后查询 DB 确认各表有数据
+
 ```bash
-sqlite3 data/liquitrack.db "SELECT COUNT(*) FROM liquidations;"
-sqlite3 data/liquitrack.db "SELECT COUNT(*) FROM open_interest;"
+sqlite3 data/finafeed.db "SELECT COUNT(*) FROM liquidations;"
+sqlite3 data/finafeed.db "SELECT COUNT(*) FROM open_interest;"
 ```
 
 ### Manual Verification
-1. 在本地运行 collector，观察日志输出
+
+1. 在本地运行 finafeed，观察日志输出
 2. 手动 `kill -SIGTERM <pid>` 验证优雅关闭
 3. 断网测试：验证 WS 自动重连
 4. 部署到 VPS 后，运行 24h 检查稳定性

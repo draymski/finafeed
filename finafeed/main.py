@@ -1,11 +1,11 @@
-"""LiquiTrack Collector — 7×24 Binance Futures Data Collection Daemon.
+"""Finafeed Collector — 7×24 Binance Futures Data Collection Daemon.
 
 Entry point: orchestrates lifecycle, signal handling, and multi-symbol task fan-out.
 
 Usage:
-    python -m collector.main                  # normal run
-    python -m collector.main --dry-run        # config check + DB schema only
-    python -m collector.main --config /path/to/config.yaml
+    python -m finafeed.main                  # normal run
+    python -m finafeed.main --dry-run        # config check + DB schema only
+    python -m finafeed.main --config /path/to/config.yaml
 """
 
 from __future__ import annotations
@@ -18,14 +18,15 @@ from pathlib import Path
 
 import structlog
 
-from collector.config import load_config
-from collector.storage import Storage
-from collector.infra.logger import setup_logging
-from collector.infra.metrics import start_metrics_server
-from collector.infra.alerter import Alerter
-from collector.collectors.ws_liquidation import collect_liquidations
-from collector.collectors.rest_open_interest import collect_open_interest
-from collector.collectors.rest_long_short import collect_long_short_ratio
+from finafeed.config import load_config
+from finafeed.storage import Storage
+from finafeed.infra.logger import setup_logging
+from finafeed.infra.metrics import start_metrics_server
+from finafeed.infra.alerter import Alerter
+from finafeed.collectors.ws_liquidation import collect_liquidations
+from finafeed.collectors.rest_open_interest import collect_open_interest
+from finafeed.collectors.rest_long_short import collect_long_short_ratio
+from finafeed.infra.telegram_bot import run_telegram_bot
 
 
 async def run(config_path: str | None = None, dry_run: bool = False) -> None:
@@ -37,7 +38,7 @@ async def run(config_path: str | None = None, dry_run: bool = False) -> None:
     # ── Logging ─────────────────────────────────────────────────────
     log = setup_logging(cfg.logging)
     log.info(
-        "collector_starting",
+        "finafeed_starting",
         symbols=cfg.symbols,
         dry_run=dry_run,
         db_path=cfg.database.path,
@@ -78,6 +79,14 @@ async def run(config_path: str | None = None, dry_run: bool = False) -> None:
     # ── Fan-out tasks ───────────────────────────────────────────────
     tasks: list[asyncio.Task] = []
 
+    # Telegram bot listener (for /stat etc.)
+    tasks.append(
+        asyncio.create_task(
+            run_telegram_bot(cfg.alert, storage, shutdown_event),
+            name="telegram-bot",
+        )
+    )
+
     for symbol in cfg.symbols:
         symbol = symbol.upper()
 
@@ -110,7 +119,7 @@ async def run(config_path: str | None = None, dry_run: bool = False) -> None:
     # Send startup notification
     await alerter.fire(
         "ws_disconnect_5min",  # reuse to ensure it's in alert_on; it will be overridden
-        f"🟢 Collector started with {len(cfg.symbols)} symbols: {', '.join(cfg.symbols)}",
+        f"🟢 Finafeed started with {len(cfg.symbols)} symbols: {', '.join(cfg.symbols)}",
     )
 
     # ── Wait for all tasks or shutdown ──────────────────────────────
@@ -138,12 +147,12 @@ async def run(config_path: str | None = None, dry_run: bool = False) -> None:
     # Close resources
     await storage.close()
     await alerter.close()
-    log.info("collector_stopped")
+    log.info("finafeed_stopped")
 
 
 def main() -> None:
     """CLI entry point."""
-    parser = argparse.ArgumentParser(description="LiquiTrack Binance Data Collector")
+    parser = argparse.ArgumentParser(description="Finafeed Binance Data Collector")
     parser.add_argument("--config", "-c", type=str, default=None, help="Path to config.yaml")
     parser.add_argument("--dry-run", action="store_true", help="Validate config and exit")
     args = parser.parse_args()

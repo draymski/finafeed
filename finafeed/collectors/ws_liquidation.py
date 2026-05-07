@@ -9,12 +9,12 @@ from typing import TYPE_CHECKING, Any, Dict, List
 import aiohttp
 import structlog
 
-from collector.infra import metrics as m
+from finafeed.infra import metrics as m
 
 if TYPE_CHECKING:
-    from collector.config import AppConfig
-    from collector.infra.alerter import Alerter
-    from collector.storage import Storage
+    from finafeed.config import AppConfig
+    from finafeed.infra.alerter import Alerter
+    from finafeed.storage import Storage
 
 log = structlog.get_logger("ws_liquidation")
 
@@ -73,7 +73,7 @@ async def collect_liquidations(
                 except asyncio.TimeoutError:
                     # No message within 5s — check if we should flush or alert
                     elapsed_no_msg = time.monotonic() - last_msg_time
-                    if elapsed_no_msg > 300:  # 5 minutes without any WS message
+                    if elapsed_no_msg > 900:  # 15 minutes without any WS message
                         await alerter.fire(
                             "ws_disconnect_5min",
                             f"No WS messages for {elapsed_no_msg:.0f}s on {symbol}",

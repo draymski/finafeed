@@ -10,12 +10,12 @@ from typing import TYPE_CHECKING
 import aiohttp
 import structlog
 
-from collector.infra import metrics as m
+from finafeed.infra import metrics as m
 
 if TYPE_CHECKING:
-    from collector.config import AppConfig
-    from collector.infra.alerter import Alerter
-    from collector.storage import Storage
+    from finafeed.config import AppConfig
+    from finafeed.infra.alerter import Alerter
+    from finafeed.storage import Storage
 
 log = structlog.get_logger("long_short_ratio")
 

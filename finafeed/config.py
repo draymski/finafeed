@@ -14,7 +14,7 @@ import yaml
 
 @dataclass
 class DatabaseConfig:
-    path: str = "./data/liquitrack.db"
+    path: str = "./data/finafeed.db"
     wal_mode: bool = True
     max_size_mb: int = 800
 
@@ -145,12 +145,12 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     """Load configuration from YAML, with env-var overrides.
 
     Environment variable overrides:
-        LIQUITRACK_SYMBOLS          comma-separated symbol list
-        LIQUITRACK_DB_PATH          database file path
-        LIQUITRACK_LOG_LEVEL        log level (DEBUG/INFO/WARNING/ERROR)
-        LIQUITRACK_METRICS_PORT     Prometheus port
-        LIQUITRACK_TELEGRAM_TOKEN   Telegram bot token
-        LIQUITRACK_TELEGRAM_CHAT    Telegram chat ID
+        FINAFEED_SYMBOLS          comma-separated symbol list
+        FINAFEED_DB_PATH          database file path
+        FINAFEED_LOG_LEVEL        log level (DEBUG/INFO/WARNING/ERROR)
+        FINAFEED_METRICS_PORT     Prometheus port
+        FINAFEED_TELEGRAM_TOKEN   Telegram bot token
+        FINAFEED_TELEGRAM_CHAT    Telegram chat ID
     """
     if path is None:
         path = Path(__file__).parent / "config.yaml"
@@ -165,23 +165,23 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     cfg: AppConfig = _merge(AppConfig, raw)
 
     # ── Env-var overrides ───────────────────────────────────────────
-    if env_sym := os.environ.get("LIQUITRACK_SYMBOLS"):
+    if env_sym := os.environ.get("FINAFEED_SYMBOLS"):
         cfg.symbols = [s.strip().upper() for s in env_sym.split(",") if s.strip()]
 
-    if env_db := os.environ.get("LIQUITRACK_DB_PATH"):
+    if env_db := os.environ.get("FINAFEED_DB_PATH"):
         cfg.database.path = env_db
 
-    if env_log := os.environ.get("LIQUITRACK_LOG_LEVEL"):
+    if env_log := os.environ.get("FINAFEED_LOG_LEVEL"):
         cfg.logging.level = env_log.upper()
 
-    if env_port := os.environ.get("LIQUITRACK_METRICS_PORT"):
+    if env_port := os.environ.get("FINAFEED_METRICS_PORT"):
         cfg.metrics.port = int(env_port)
 
-    if env_tg_token := os.environ.get("LIQUITRACK_TELEGRAM_TOKEN"):
+    if env_tg_token := os.environ.get("FINAFEED_TELEGRAM_TOKEN"):
         cfg.alert.telegram.bot_token = env_tg_token
         cfg.alert.enabled = True
 
-    if env_tg_chat := os.environ.get("LIQUITRACK_TELEGRAM_CHAT"):
+    if env_tg_chat := os.environ.get("FINAFEED_TELEGRAM_CHAT"):
         cfg.alert.telegram.chat_id = env_tg_chat
 
     return cfg

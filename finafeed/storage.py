@@ -11,8 +11,8 @@ from typing import Any, Dict, List, Sequence
 import aiosqlite
 import structlog
 
-from collector.config import DatabaseConfig
-from collector.infra import metrics as m
+from finafeed.config import DatabaseConfig
+from finafeed.infra import metrics as m
 
 log = structlog.get_logger("storage")
 
@@ -99,7 +99,7 @@ class Storage:
     def _resolve_current_path(self) -> Path:
         """Find the latest DB file or create a new one.
 
-        Naming convention:  liquitrack.db, liquitrack_001.db, liquitrack_002.db, ...
+        Naming convention:  finafeed.db, finafeed_001.db, finafeed_002.db, ...
         """
         base = self._base_path
         if not base.exists():
@@ -134,6 +134,32 @@ class Storage:
             m.db_rotations_total.inc()
             await self.close()
             await self.open()
+
+    # ── Queries ─────────────────────────────────────────────────────
+
+    async def get_row_counts(self) -> dict[str, dict[str, int]]:
+        """Return row counts per symbol per table.
+
+        Returns:
+            ``{"liquidations": {"BTCUSDT": 42, "ETHUSDT": 10}, ...}``
+        """
+        if not self._db:
+            return {}
+        result: dict[str, dict[str, int]] = {}
+        for table in ("liquidations", "open_interest", "long_short_ratio"):
+            result[table] = {}
+            async with self._db.execute(
+                f"SELECT symbol, COUNT(*) FROM {table} GROUP BY symbol"  # noqa: S608
+            ) as cursor:
+                async for row in cursor:
+                    result[table][row[0]] = row[1]
+        return result
+
+    def get_db_size_bytes(self) -> int:
+        """Return the current database file size in bytes."""
+        if self._current_path and self._current_path.exists():
+            return self._current_path.stat().st_size
+        return 0
 
     # ── Writers ──────────────────────────────────────────────────────
 

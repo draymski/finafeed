@@ -9,7 +9,7 @@ from pathlib import Path
 
 import structlog
 
-from collector.config import LoggingConfig
+from finafeed.config import LoggingConfig
 
 
 def setup_logging(cfg: LoggingConfig) -> structlog.stdlib.BoundLogger:
@@ -17,7 +17,7 @@ def setup_logging(cfg: LoggingConfig) -> structlog.stdlib.BoundLogger:
 
     log_dir = Path(cfg.dir)
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / "collector.log"
+    log_file = log_dir / "finafeed.log"
 
     # ── stdlib root handler: JSON to file ───────────────────────────
     file_handler = RotatingFileHandler(
@@ -74,4 +74,4 @@ def setup_logging(cfg: LoggingConfig) -> structlog.stdlib.BoundLogger:
     )
     console_handler.setFormatter(console_formatter)
 
-    return structlog.get_logger("liquitrack")
+    return structlog.get_logger("finafeed")

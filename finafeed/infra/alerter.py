@@ -10,7 +10,7 @@ import aiohttp
 import structlog
 
 if TYPE_CHECKING:
-    from collector.config import AlertConfig
+    from finafeed.config import AlertConfig
 
 log = structlog.get_logger("alerter")
 
@@ -57,7 +57,7 @@ class Alerter:
         self._last_fired[dedup_id] = now
         self._active_alerts.add(dedup_id)
 
-        full_msg = f"🚨 *LiquiTrack Alert*\n\n`{alert_key}`"
+        full_msg = f"🚨 *finafeed Alert*\n\n`{alert_key}`"
         if symbol:
             full_msg += f"  symbol=`{symbol}`"
         full_msg += f"\n\n{message}"
@@ -77,7 +77,7 @@ class Alerter:
         self._active_alerts.discard(dedup_id)
         self._last_fired.pop(dedup_id, None)
 
-        full_msg = f"✅ *LiquiTrack Resolved*\n\n`{alert_key}`"
+        full_msg = f"✅ *finafeed Resolved*\n\n`{alert_key}`"
         if symbol:
             full_msg += f"  symbol=`{symbol}`"
         full_msg += f"\n\n{message}"

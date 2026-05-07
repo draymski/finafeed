@@ -1,7 +1,7 @@
 [project]
-name = "liquitrack-collector"
+name = "finafeed"
 version = "1.0.0"
-description = "LiquiTrack 7×24 Binance Futures Data Collection Daemon"
+description = "7×24 Binance Futures Data Collection Daemon"
 readme = "deploy/README.md"
 requires-python = ">=3.12"
 dependencies = [
