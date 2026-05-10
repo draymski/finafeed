@@ -71,7 +71,7 @@ class AlertConfig:
     enabled: bool = False
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     alert_on: List[str] = field(default_factory=lambda: [
-        "ws_disconnect_5min",
+        "ws_disconnect_30min",
         "rest_fail_3_consecutive",
         "db_write_error",
     ])

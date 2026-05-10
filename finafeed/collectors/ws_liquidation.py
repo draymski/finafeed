@@ -56,7 +56,7 @@ async def collect_liquidations(
 
             # Resolve any previous disconnect alert
             await alerter.resolve(
-                "ws_disconnect_5min",
+                "ws_disconnect_30min",
                 f"WebSocket reconnected for {symbol}",
                 symbol=symbol,
             )
@@ -73,10 +73,10 @@ async def collect_liquidations(
                 except asyncio.TimeoutError:
                     # No message within 5s — check if we should flush or alert
                     elapsed_no_msg = time.monotonic() - last_msg_time
-                    if elapsed_no_msg > 900:  # 15 minutes without any WS message
+                    if elapsed_no_msg > 1800:  # 30 minutes without any WS message
                         await alerter.fire(
-                            "ws_disconnect_5min",
-                            f"No WS messages for {elapsed_no_msg:.0f}s on {symbol}",
+                            "ws_disconnect_30min",
+                            f"No WS messages for {int(elapsed_no_msg / 60)} mins on {symbol}",
                             symbol=symbol,
                         )
                     # Flush any pending buffer

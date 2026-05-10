@@ -38,7 +38,7 @@ alert:
     bot_token: ""
     chat_id: "" # 填入你的 chat_id (用 /start 给 bot 发消息后获取)
   alert_on:
-    - ws_disconnect_5min
+    - ws_disconnect_30min
     - rest_fail_3_consecutive
     - db_write_error
 

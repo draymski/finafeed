@@ -213,7 +213,7 @@ alert:
   enabled: false
   webhook_url: "" # Discord/Telegram webhook
   alert_on:
-    - ws_disconnect_5min
+    - ws_disconnect_30min
     - rest_fail_3_consecutive
     - db_write_error
 

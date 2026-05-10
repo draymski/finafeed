@@ -118,7 +118,7 @@ async def run(config_path: str | None = None, dry_run: bool = False) -> None:
 
     # Send startup notification
     await alerter.fire(
-        "ws_disconnect_5min",  # reuse to ensure it's in alert_on; it will be overridden
+        "ws_disconnect_30min",  # reuse to ensure it's in alert_on; it will be overridden
         f"🟢 Finafeed started with {len(cfg.symbols)} symbols: {', '.join(cfg.symbols)}",
     )
 

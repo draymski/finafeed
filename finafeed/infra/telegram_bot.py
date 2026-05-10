@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import TYPE_CHECKING, Any
+
+_PROCESS_START_TIME = time.time()
 
 import aiohttp
 import structlog
@@ -141,14 +143,26 @@ async def _handle_stat(
     delta = _fmt_delta(current, prev_snapshot)
     db_size = storage.get_db_size_bytes()
 
-    now = datetime.now(timezone.utc)
-    prev_dt = datetime.fromtimestamp(snapshot_time, tz=timezone.utc)
-    elapsed_min = (now - prev_dt).total_seconds() / 60
+    tz_8 = timezone(timedelta(hours=8))
+    now = datetime.now(tz_8)
+    prev_dt = datetime.fromtimestamp(snapshot_time, tz=tz_8)
+    start_dt = datetime.fromtimestamp(_PROCESS_START_TIME, tz=tz_8)
+    
+    elapsed_sec = (now - prev_dt).total_seconds()
+    if elapsed_sec < 60:
+        elapsed_str = f"{elapsed_sec:.0f} secs"
+    elif elapsed_sec < 3600:
+        elapsed_str = f"{elapsed_sec / 60:.1f} mins"
+    elif elapsed_sec < 86400:
+        elapsed_str = f"{elapsed_sec / 3600:.1f} hours"
+    else:
+        elapsed_str = f"{elapsed_sec / 86400:.1f} days"
 
     # Build message
     lines = [
         f"📊 *Finafeed Stats*",
-        f"Since: `{prev_dt:%Y-%m-%d %H:%M:%S} UTC` ({elapsed_min:.1f} min ago)",
+        f"Started: `{start_dt:%Y-%m-%d %H:%M:%S}`",
+        f"Since: `{prev_dt:%Y-%m-%d %H:%M:%S}` ({elapsed_str} ago)",
         "",
     ]
 
