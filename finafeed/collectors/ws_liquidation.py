@@ -76,7 +76,7 @@ async def collect_liquidations(
                     if elapsed_no_msg > 1800:  # 30 minutes without any WS message
                         await alerter.fire(
                             "ws_disconnect_30min",
-                            f"No WS messages for {int(elapsed_no_msg / 60)} mins on {symbol}",
+                            # f"No WS messages for {int(elapsed_no_msg / 60)} mins on {symbol}",
                             symbol=symbol,
                         )
                     # Flush any pending buffer
