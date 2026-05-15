@@ -29,7 +29,7 @@ class LiquidationConfig:
 class OpenInterestConfig:
     enabled: bool = True
     interval_sec: int = 5
-    dedup: bool = True
+    align_interval_sec: int = 300
 
 
 @dataclass

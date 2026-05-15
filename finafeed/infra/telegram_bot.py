@@ -46,6 +46,37 @@ def _fmt_delta(current: dict[str, dict[str, int]],
     return delta
 
 
+def _fmt_num_clean(val: float) -> str:
+    """Format float cleanly, dropping .00 if it is an integer, or using up to 2 decimal places."""
+    if val.is_integer():
+        return f"{int(val)}"
+    s = f"{val:.2f}"
+    if s.endswith(".00"):
+        return s[:-3]
+    if s.endswith("0") and "." in s:
+        return s[:-1]
+    return s
+
+
+def _fmt_compact(val: float) -> str:
+    """Format large numbers into a human-readable compact string (e.g., K, M, B)."""
+    abs_val = abs(val)
+    if abs_val >= 1_000_000_000:
+        return f"{_fmt_num_clean(val / 1_000_000_000)}B"
+    elif abs_val >= 1_000_000:
+        return f"{_fmt_num_clean(val / 1_000_000)}M"
+    elif abs_val >= 1_000:
+        return f"{_fmt_num_clean(val / 1_000)}K"
+    else:
+        return _fmt_num_clean(val)
+
+
+def _fmt_usd(val: float) -> str:
+    """Format USD values into a human-readable compact string."""
+    return f"${_fmt_compact(val)}"
+
+
+
 async def run_telegram_bot(
     cfg: AlertConfig,
     storage: Storage,
@@ -143,6 +174,17 @@ async def _handle_stat(
     delta = _fmt_delta(current, prev_snapshot)
     db_size = storage.get_db_size_bytes()
 
+    # Collect all unique symbols across tables
+    symbols = set()
+    for table in current:
+        symbols.update(current[table].keys())
+    for table in prev_snapshot:
+        symbols.update(prev_snapshot[table].keys())
+    symbols_list = sorted(list(symbols))
+
+    # Fetch 24h market stats
+    market_stats = await storage.get_24h_stats(symbols_list)
+
     tz_8 = timezone(timedelta(hours=8))
     now = datetime.now(tz_8)
     prev_dt = datetime.fromtimestamp(snapshot_time, tz=tz_8)
@@ -184,6 +226,52 @@ async def _handle_stat(
             d = delta.get(table, {}).get(sym, 0)
             sign = "+" if d >= 0 else ""
             lines.append(f"  `{sym}`: {total} ({sign}{d})")
+            
+            sym_stats = market_stats.get(sym, {})
+            if table == "liquidations":
+                liq = sym_stats.get("liquidations", {})
+                long_usd = liq.get("long_usd", 0.0)
+                short_usd = liq.get("short_usd", 0.0)
+                total_usd = long_usd + short_usd
+                lines.append(f"    └ 24h: {_fmt_usd(total_usd)} (多: {_fmt_usd(long_usd)} | 空: {_fmt_usd(short_usd)})")
+            elif table == "open_interest":
+                oi = sym_stats.get("open_interest", {})
+                curr = oi.get("current")
+                prev = oi.get("prev")
+                curr_t = oi.get("curr_time_ms")
+                prev_t = oi.get("prev_time_ms")
+                if curr is not None and prev is not None and curr_t is not None and prev_t is not None:
+                    elapsed_h = (curr_t - prev_t) / (1000 * 3600)
+                    if elapsed_h < 0.05:
+                        lines.append(f"    └ 24h: {_fmt_compact(curr)} (single entry)")
+                    else:
+                        diff_val = curr - prev
+                        sign_val = "+" if diff_val >= 0 else ""
+                        diff_pct = (diff_val / prev * 100) if prev != 0 else 0.0
+                        sign_pct = "+" if diff_pct >= 0 else ""
+                        lines.append(f"    └ 24h: {_fmt_compact(prev)} → {_fmt_compact(curr)} ({sign_val}{_fmt_compact(diff_val)}, {sign_pct}{diff_pct:.2f}%)")
+                elif curr is not None:
+                    lines.append(f"    └ Latest: {_fmt_compact(curr)} (no comparison data)")
+                else:
+                    lines.append("    └ (no market data)")
+            elif table == "long_short_ratio":
+                lsr = sym_stats.get("long_short_ratio", {})
+                curr = lsr.get("current")
+                prev = lsr.get("prev")
+                curr_t = lsr.get("curr_time_ms")
+                prev_t = lsr.get("prev_time_ms")
+                if curr is not None and prev is not None and curr_t is not None and prev_t is not None:
+                    elapsed_h = (curr_t - prev_t) / (1000 * 3600)
+                    if elapsed_h < 0.05:
+                        lines.append(f"    └ Latest: {curr:.4f} (single entry)")
+                    else:
+                        diff_pct = ((curr - prev) / prev * 100) if prev != 0 else 0.0
+                        sign_pct = "+" if diff_pct >= 0 else ""
+                        lines.append(f"    └ 24h: {prev:.4f} → {curr:.4f} ({sign_pct}{diff_pct:.2f}%)")
+                elif curr is not None:
+                    lines.append(f"    └ Latest: {curr:.4f} (no comparison data)")
+                else:
+                    lines.append("    └ (no market data)")
         lines.append("")
 
     lines.append(f"💾 DB size: `{_fmt_size(db_size)}`")

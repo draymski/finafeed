@@ -14,8 +14,8 @@ collectors:
 
   open_interest:
     enabled: true
-    interval_sec: 5
-    dedup: true # 值不变时跳过写入
+    interval_sec: 30
+    align_interval_sec: 60
 
   long_short_ratio:
     enabled: true

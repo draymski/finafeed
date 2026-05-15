@@ -30,12 +30,13 @@ async def collect_open_interest(
 ) -> None:
     """Poll open interest every ``interval_sec`` seconds.
 
-    Downsampling: writes are aligned to 300-second boundaries. Only the first
-    successful poll in a new 300s window is saved, with its api_time rewritten
+    Downsampling: writes are aligned to ``align_interval_sec`` boundaries. Only the first
+    successful poll in a new ``align_interval_sec`` window is saved, with its api_time rewritten
     to the boundary time, ensuring clean alignment for downstream processing.
     """
     cfg_oi = config.collectors.open_interest
     interval = cfg_oi.interval_sec
+    align_sec = cfg_oi.align_interval_sec
     last_written_boundary = 0
     consecutive_failures = 0
 
@@ -74,9 +75,9 @@ async def collect_open_interest(
                 
                 m.last_activity.labels(type="open_interest", symbol=symbol).set_to_current_time()
 
-                # Align to 300-second boundary
+                # Align to configured boundary
                 current_time = time.time()
-                current_boundary = int(current_time) // 300 * 300
+                current_boundary = int(current_time) // align_sec * align_sec
 
                 if current_boundary > last_written_boundary:
                     row = {

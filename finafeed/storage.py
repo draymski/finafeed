@@ -161,6 +161,130 @@ class Storage:
             return self._current_path.stat().st_size
         return 0
 
+    async def get_24h_stats(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
+        """Query 24-hour market data stats for the given symbols.
+
+        Returns:
+            A dictionary containing stats for liquidations, open interest, and long/short ratio.
+        """
+        if not self._db:
+            return {}
+
+        now_ms = int(time.time() * 1000)
+        day_ago_ms = now_ms - 24 * 60 * 60 * 1000
+
+        stats: dict[str, dict[str, Any]] = {}
+        for symbol in symbols:
+            stats[symbol] = {
+                "liquidations": {"long_usd": 0.0, "short_usd": 0.0},
+                "open_interest": {"current": None, "prev": None, "prev_time_ms": None},
+                "long_short_ratio": {"current": None, "prev": None, "prev_time_ms": None},
+            }
+
+            # 1. Liquidations in the past 24h
+            # side == 'SELL' represents long positions liquidated
+            # side == 'BUY' represents short positions liquidated
+            liq_query = """
+                SELECT 
+                    SUM(CASE WHEN side = 'SELL' THEN qty * price ELSE 0 END) AS long_usd,
+                    SUM(CASE WHEN side = 'BUY' THEN qty * price ELSE 0 END) AS short_usd
+                FROM liquidations
+                WHERE symbol = ? AND event_time >= ?
+            """
+            async with self._db.execute(liq_query, (symbol, day_ago_ms)) as cursor:
+                row = await cursor.fetchone()
+                if row:
+                    stats[symbol]["liquidations"]["long_usd"] = row[0] or 0.0
+                    stats[symbol]["liquidations"]["short_usd"] = row[1] or 0.0
+
+            # 2. Open Interest
+            # Current OI:
+            oi_curr_query = """
+                SELECT open_interest, api_time
+                FROM open_interest
+                WHERE symbol = ?
+                ORDER BY api_time DESC
+                LIMIT 1
+            """
+            async with self._db.execute(oi_curr_query, (symbol,)) as cursor:
+                row = await cursor.fetchone()
+                if row:
+                    stats[symbol]["open_interest"]["current"] = row[0]
+                    stats[symbol]["open_interest"]["curr_time_ms"] = row[1]
+
+            # Prev OI (closest to 24h ago):
+            oi_prev_query = """
+                SELECT open_interest, api_time
+                FROM open_interest
+                WHERE symbol = ? AND api_time <= ?
+                ORDER BY api_time DESC
+                LIMIT 1
+            """
+            async with self._db.execute(oi_prev_query, (symbol, day_ago_ms)) as cursor:
+                row = await cursor.fetchone()
+                if row:
+                    stats[symbol]["open_interest"]["prev"] = row[0]
+                    stats[symbol]["open_interest"]["prev_time_ms"] = row[1]
+                else:
+                    # Fallback to the earliest row in the DB
+                    oi_earliest_query = """
+                        SELECT open_interest, api_time
+                        FROM open_interest
+                        WHERE symbol = ?
+                        ORDER BY api_time ASC
+                        LIMIT 1
+                    """
+                    async with self._db.execute(oi_earliest_query, (symbol,)) as cursor:
+                        row = await cursor.fetchone()
+                        if row:
+                            stats[symbol]["open_interest"]["prev"] = row[0]
+                            stats[symbol]["open_interest"]["prev_time_ms"] = row[1]
+
+            # 3. Long/Short Ratio
+            # Current Long/Short Ratio:
+            lsr_curr_query = """
+                SELECT long_short_ratio, data_timestamp
+                FROM long_short_ratio
+                WHERE symbol = ?
+                ORDER BY data_timestamp DESC
+                LIMIT 1
+            """
+            async with self._db.execute(lsr_curr_query, (symbol,)) as cursor:
+                row = await cursor.fetchone()
+                if row:
+                    stats[symbol]["long_short_ratio"]["current"] = row[0]
+                    stats[symbol]["long_short_ratio"]["curr_time_ms"] = row[1]
+
+            # Prev Long/Short Ratio (closest to 24h ago):
+            lsr_prev_query = """
+                SELECT long_short_ratio, data_timestamp
+                FROM long_short_ratio
+                WHERE symbol = ? AND data_timestamp <= ?
+                ORDER BY data_timestamp DESC
+                LIMIT 1
+            """
+            async with self._db.execute(lsr_prev_query, (symbol, day_ago_ms)) as cursor:
+                row = await cursor.fetchone()
+                if row:
+                    stats[symbol]["long_short_ratio"]["prev"] = row[0]
+                    stats[symbol]["long_short_ratio"]["prev_time_ms"] = row[1]
+                else:
+                    # Fallback to the earliest row in the DB
+                    lsr_earliest_query = """
+                        SELECT long_short_ratio, data_timestamp
+                        FROM long_short_ratio
+                        WHERE symbol = ?
+                        ORDER BY data_timestamp ASC
+                        LIMIT 1
+                    """
+                    async with self._db.execute(lsr_earliest_query, (symbol,)) as cursor:
+                        row = await cursor.fetchone()
+                        if row:
+                            stats[symbol]["long_short_ratio"]["prev"] = row[0]
+                            stats[symbol]["long_short_ratio"]["prev_time_ms"] = row[1]
+
+        return stats
+
     # ── Writers ──────────────────────────────────────────────────────
 
     async def write_liquidations(self, rows: List[Dict[str, Any]]) -> None:
