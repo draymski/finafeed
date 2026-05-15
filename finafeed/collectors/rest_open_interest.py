@@ -30,12 +30,13 @@ async def collect_open_interest(
 ) -> None:
     """Poll open interest every ``interval_sec`` seconds.
 
-    Dedup: if the ``openInterest`` value is identical to the previous poll,
-    the write is skipped to save storage.
+    Downsampling: writes are aligned to 300-second boundaries. Only the first
+    successful poll in a new 300s window is saved, with its api_time rewritten
+    to the boundary time, ensuring clean alignment for downstream processing.
     """
     cfg_oi = config.collectors.open_interest
     interval = cfg_oi.interval_sec
-    last_value: str | None = None
+    last_written_boundary = 0
     consecutive_failures = 0
 
     async with aiohttp.ClientSession(
@@ -70,25 +71,27 @@ async def collect_open_interest(
                 )
 
                 oi_value = data.get("openInterest", "")
-                api_time = data.get("time", int(time.time() * 1000))
-
+                
                 m.last_activity.labels(type="open_interest", symbol=symbol).set_to_current_time()
 
-                # Dedup check
-                if cfg_oi.dedup and oi_value == last_value:
-                    m.oi_skips_total.labels(symbol=symbol).inc()
-                    log.debug("oi_skipped", symbol=symbol, value=oi_value)
-                else:
+                # Align to 300-second boundary
+                current_time = time.time()
+                current_boundary = int(current_time) // 300 * 300
+
+                if current_boundary > last_written_boundary:
                     row = {
                         "symbol": symbol,
                         "open_interest": float(oi_value),
-                        "api_time": api_time,
-                        "collected_at": int(time.time() * 1000),
+                        "api_time": current_boundary * 1000,
+                        "collected_at": int(current_time * 1000),
                     }
                     await storage.write_open_interest(row)
                     m.oi_writes_total.labels(symbol=symbol).inc()
-                    log.debug("oi_written", symbol=symbol, value=oi_value)
-                    last_value = oi_value
+                    log.debug("oi_written", symbol=symbol, value=oi_value, boundary=current_boundary)
+                    last_written_boundary = current_boundary
+                else:
+                    m.oi_skips_total.labels(symbol=symbol).inc()
+                    log.debug("oi_skipped_boundary", symbol=symbol, value=oi_value)
 
             except asyncio.CancelledError:
                 log.info("oi_cancelled", symbol=symbol)

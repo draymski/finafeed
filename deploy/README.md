@@ -8,33 +8,16 @@
 
 ## 快速部署
 
-### 1. 创建目录
+### 1. VPS环境准备
 
 ```bash
-# 直接使用当前 ubuntu 用户，无需创建专用用户
-sudo mkdir -p /opt/finafeed
-sudo chown ubuntu:ubuntu /opt/finafeed
-```
-
-### 2. 上传代码
-
-```bash
-# 从本地上传 finafeed 目录到 VPS
-scp -r ./finafeed/ user@your-vps:/opt/finafeed/
-```
-
-### 3. 安装 uv 并同步依赖
-
-```bash
-# 安装 uv (如果还没装)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# 同步依赖 (自动创建 .venv)
-cd /opt/finafeed/finafeed
+git clone https://github.com/draymski/finafeed.git
+cp -r finafeed /opt/finafeed
+cd /opt/finafeed
 uv sync
 ```
 
-### 4. 配置
+### 2. 配置
 
 编辑 `/opt/finafeed/collector/config.yaml`
 
