@@ -74,6 +74,9 @@ class AlertConfig:
         "ws_disconnect_30min",
         "rest_fail_3_consecutive",
         "db_write_error",
+        "task_crashed",
+        "service_stopped",
+        "telegram_conflict",
     ])
 
 

@@ -4,6 +4,7 @@
 # Data & logs (runtime artifacts)
 data/
 logs/
+*.log
 
 # Python
 __pycache__/

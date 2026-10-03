@@ -37,13 +37,20 @@ class Alerter:
             )
         return self._session
 
-    async def fire(self, alert_key: str, message: str, *, symbol: str = "") -> None:
-        """Send an alert if enabled, not deduped, and the key is in alert_on."""
+    async def fire(
+        self,
+        alert_key: str,
+        message: str,
+        *,
+        symbol: str = "",
+        critical: bool = False,
+    ) -> None:
+        """Send an alert if enabled, not deduped, and the key is in alert_on (or critical=True)."""
         if not self._enabled:
             return
 
         # Check if this alert type is configured
-        if alert_key not in self._alert_on:
+        if not critical and alert_key not in self._alert_on:
             return
 
         # Dedup: skip if we already fired this key recently

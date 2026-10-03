@@ -86,10 +86,18 @@ async def collect_open_interest(
                         "api_time": current_boundary * 1000,
                         "collected_at": int(current_time * 1000),
                     }
-                    await storage.write_open_interest(row)
-                    m.oi_writes_total.labels(symbol=symbol).inc()
-                    log.debug("oi_written", symbol=symbol, value=oi_value, boundary=current_boundary)
-                    last_written_boundary = current_boundary
+                    try:
+                        await storage.write_open_interest(row)
+                        m.oi_writes_total.labels(symbol=symbol).inc()
+                        log.debug("oi_written", symbol=symbol, value=oi_value, boundary=current_boundary)
+                        last_written_boundary = current_boundary
+                    except Exception as exc:
+                        log.error("oi_write_error", symbol=symbol, error=str(exc))
+                        await alerter.fire(
+                            "db_write_error",
+                            f"Failed to write open interest for {symbol}: {exc}",
+                            symbol=symbol,
+                        )
                 else:
                     m.oi_skips_total.labels(symbol=symbol).inc()
                     log.debug("oi_skipped_boundary", symbol=symbol, value=oi_value)

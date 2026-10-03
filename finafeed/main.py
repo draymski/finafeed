@@ -82,7 +82,7 @@ async def run(config_path: str | None = None, dry_run: bool = False) -> None:
     # Telegram bot listener (for /stat etc.)
     tasks.append(
         asyncio.create_task(
-            run_telegram_bot(cfg.alert, storage, shutdown_event),
+            run_telegram_bot(cfg.alert, storage, shutdown_event, alerter=alerter),
             name="telegram-bot",
         )
     )
@@ -118,8 +118,9 @@ async def run(config_path: str | None = None, dry_run: bool = False) -> None:
 
     # Send startup notification
     await alerter.fire(
-        "ws_disconnect_30min",  # reuse to ensure it's in alert_on; it will be overridden
+        "service_started",
         f"🟢 Finafeed started with {len(cfg.symbols)} symbols: {', '.join(cfg.symbols)}",
+        critical=True,
     )
 
     # ── Wait for all tasks or shutdown ──────────────────────────────
@@ -128,7 +129,13 @@ async def run(config_path: str | None = None, dry_run: bool = False) -> None:
         # If a task crashed without shutdown being set, log and set shutdown
         for t in done:
             if t.exception() and not shutdown_event.is_set():
-                log.error("task_crashed", task=t.get_name(), error=str(t.exception()))
+                err = t.exception()
+                log.error("task_crashed", task=t.get_name(), error=str(err))
+                await alerter.fire(
+                    "task_crashed",
+                    f"💥 Task `{t.get_name()}` crashed unexpectedly:\n`{err}`",
+                    critical=True,
+                )
                 shutdown_event.set()
     except asyncio.CancelledError:
         shutdown_event.set()
@@ -136,6 +143,11 @@ async def run(config_path: str | None = None, dry_run: bool = False) -> None:
     # ── Graceful shutdown ───────────────────────────────────────────
     log.info("shutting_down")
     shutdown_event.set()
+    await alerter.fire(
+        "service_stopped",
+        "🛑 Finafeed 服务正在停止/退出...",
+        critical=True,
+    )
 
     # Cancel remaining tasks and wait for them to finish
     for t in tasks:

@@ -19,6 +19,7 @@ import structlog
 if TYPE_CHECKING:
     from finafeed.config import AlertConfig
     from finafeed.storage import Storage
+    from finafeed.infra.alerter import Alerter
 
 log = structlog.get_logger("telegram_bot")
 
@@ -81,6 +82,7 @@ async def run_telegram_bot(
     cfg: AlertConfig,
     storage: Storage,
     shutdown_event: asyncio.Event,
+    alerter: Alerter | None = None,
 ) -> None:
     """Long-running task: poll Telegram for /stat commands and reply with stats."""
 
@@ -129,6 +131,24 @@ async def run_telegram_bot(
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as resp:
                     if resp.status != 200:
+                        body = await resp.text()
+                        log.error("telegram_get_updates_failed", status=resp.status, body=body[:200])
+                        if resp.status == 409:
+                            log.error("telegram_webhook_conflict", status=resp.status, body=body[:200])
+                            if alerter:
+                                await alerter.fire(
+                                    "telegram_conflict",
+                                    "⚠️ *Telegram Bot 告警*：检测到 Webhook 冲突 (409 Conflict)！\n\n"
+                                    "当前 Bot 被外部 Webhook 占用，无法通过轮询接收 `/stat` 等指令。\n"
+                                    "请检查是否有其他服务设置了 Webhook 或 Token 是否泄露。",
+                                    critical=True,
+                                )
+                            await _sleep_or_shutdown(15, shutdown_event)
+                            continue
+                        elif resp.status == 401:
+                            log.error("telegram_token_unauthorized", status=resp.status)
+                            await _sleep_or_shutdown(30, shutdown_event)
+                            continue
                         await _sleep_or_shutdown(_POLL_INTERVAL_SEC, shutdown_event)
                         continue
                     data = await resp.json()
@@ -155,7 +175,8 @@ async def run_telegram_bot(
             except asyncio.CancelledError:
                 break
             except Exception as exc:
-                log.error("telegram_bot_error", error=str(exc))
+                err_msg = str(exc) or type(exc).__name__
+                log.error("telegram_bot_error", error=err_msg, exc_info=True)
                 await _sleep_or_shutdown(_POLL_INTERVAL_SEC, shutdown_event)
 
     log.info("telegram_bot_stopped")

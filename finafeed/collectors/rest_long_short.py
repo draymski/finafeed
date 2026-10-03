@@ -98,7 +98,16 @@ async def collect_long_short_ratio(
                         "collected_at": collected_at,
                     })
 
-                inserted = await storage.write_long_short_ratio(rows)
+                try:
+                    inserted = await storage.write_long_short_ratio(rows)
+                except Exception as exc:
+                    log.error("lsr_write_error", symbol=symbol, error=str(exc))
+                    await alerter.fire(
+                        "db_write_error",
+                        f"Failed to write long/short ratio for {symbol}: {exc}",
+                        symbol=symbol,
+                    )
+                    inserted = 0
                 elapsed_ms = (time.monotonic() - t0) * 1000
 
                 # Detailed log per user requirement

@@ -76,12 +76,12 @@ async def collect_liquidations(
                     if elapsed_no_msg > 1800:  # 30 minutes without any WS message
                         await alerter.fire(
                             "ws_disconnect_30min",
-                            # f"No WS messages for {int(elapsed_no_msg / 60)} mins on {symbol}",
+                            f"No WS messages for {int(elapsed_no_msg / 60)} mins on {symbol}",
                             symbol=symbol,
                         )
                     # Flush any pending buffer
                     if buffer:
-                        await _flush(buffer, storage, symbol)
+                        await _flush(buffer, storage, symbol, alerter=alerter)
                         buffer.clear()
                         last_flush = time.monotonic()
                     continue
@@ -120,7 +120,7 @@ async def collect_liquidations(
                 # Flush buffer periodically
                 now = time.monotonic()
                 if now - last_flush >= buffer_sec:
-                    await _flush(buffer, storage, symbol)
+                    await _flush(buffer, storage, symbol, alerter=alerter)
                     buffer.clear()
                     last_flush = now
 
@@ -129,7 +129,7 @@ async def collect_liquidations(
             # Flush remaining
             if buffer:
                 try:
-                    await _flush(buffer, storage, symbol)
+                    await _flush(buffer, storage, symbol, alerter=alerter)
                 except Exception:
                     pass
             break
@@ -156,10 +156,21 @@ async def collect_liquidations(
         delay = min(delay * cfg_rc.backoff_factor, cfg_rc.max_delay_sec)
 
 
-async def _flush(buffer: List[Dict[str, Any]], storage: Storage, symbol: str) -> None:
+async def _flush(
+    buffer: List[Dict[str, Any]],
+    storage: Storage,
+    symbol: str,
+    alerter: Alerter | None = None,
+) -> None:
     """Write buffered rows to database."""
     try:
         await storage.write_liquidations(buffer)
         log.debug("ws_flushed", symbol=symbol, count=len(buffer))
     except Exception as exc:
         log.error("ws_flush_error", symbol=symbol, count=len(buffer), error=str(exc))
+        if alerter:
+            await alerter.fire(
+                "db_write_error",
+                f"Failed to flush {len(buffer)} liquidations for {symbol}: {exc}",
+                symbol=symbol,
+            )
