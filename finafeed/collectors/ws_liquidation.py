@@ -37,6 +37,7 @@ async def collect_liquidations(
     stream = f"{symbol.lower()}@forceOrder"
     ws_url = f"wss://fstream.binance.com/market/stream?streams={stream}"
     delay = cfg_rc.initial_delay_sec
+    disconnect_start: float | None = None
 
     while not shutdown_event.is_set():
         session: aiohttp.ClientSession | None = None
@@ -55,31 +56,24 @@ async def collect_liquidations(
             delay = cfg_rc.initial_delay_sec  # reset backoff
 
             # Resolve any previous disconnect alert
-            await alerter.resolve(
-                "ws_disconnect_30min",
-                f"WebSocket reconnected for {symbol}",
-                symbol=symbol,
-            )
+            if disconnect_start is not None:
+                await alerter.resolve(
+                    "ws_disconnect_30min",
+                    f"WebSocket reconnected for {symbol}",
+                    symbol=symbol,
+                )
+                disconnect_start = None
 
             # ── Message loop with buffered writes ───────────────────
             buffer: List[Dict[str, Any]] = []
             last_flush = time.monotonic()
-            last_msg_time = time.monotonic()
             buffer_sec = cfg_liq.buffer_ms / 1000.0
 
             while not shutdown_event.is_set():
                 try:
                     msg = await asyncio.wait_for(ws.receive(), timeout=5.0)
                 except asyncio.TimeoutError:
-                    # No message within 5s — check if we should flush or alert
-                    elapsed_no_msg = time.monotonic() - last_msg_time
-                    if elapsed_no_msg > 1800:  # 30 minutes without any WS message
-                        await alerter.fire(
-                            "ws_disconnect_30min",
-                            f"No WS messages for {int(elapsed_no_msg / 60)} mins on {symbol}",
-                            symbol=symbol,
-                        )
-                    # Flush any pending buffer
+                    # No liquidation events in 5s (normal in quiet markets) — flush pending buffer
                     if buffer:
                         await _flush(buffer, storage, symbol, alerter=alerter)
                         buffer.clear()
@@ -95,7 +89,6 @@ async def collect_liquidations(
                 if msg.type != aiohttp.WSMsgType.TEXT:
                     continue
 
-                last_msg_time = time.monotonic()
                 data = msg.json()
                 payload = data.get("data", data)
 
@@ -146,6 +139,15 @@ async def collect_liquidations(
         # ── Reconnect with backoff ──────────────────────────────────
         if shutdown_event.is_set():
             break
+        if disconnect_start is None:
+            disconnect_start = time.monotonic()
+        elif time.monotonic() - disconnect_start > 1800:
+            await alerter.fire(
+                "ws_disconnect_30min",
+                f"WebSocket disconnected and unable to reconnect for {int((time.monotonic() - disconnect_start) / 60)} mins on {symbol}",
+                symbol=symbol,
+            )
+
         m.ws_reconnects_total.labels(symbol=symbol).inc()
         log.info("ws_reconnecting", symbol=symbol, delay=delay)
         try:
