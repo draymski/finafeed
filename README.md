@@ -47,6 +47,8 @@ uv run python -m finafeed.main --dry-run
 
 # Run
 uv run python -m finafeed.main
+# 持久后台运行
+cd $HOME/rays/repos/finafeed && nohup uv run python -m finafeed.main > finafeed.log 2>&1 &
 ```
 
 ## Configuration
@@ -87,5 +89,3 @@ See [`deploy/README.md`](deploy/README.md) for VPS deployment with systemd.
 
 
 ## commit history
-
-- 版本`[optim] OI使用5min降采样`保持了OI的5s轮询频率, 修改了入库频率为`5min`. 后续发现数据过于稀疏, 决定生产环境回退使用`8976fd4`版本.
